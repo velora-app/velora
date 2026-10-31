@@ -1,9 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Pencil, Trash2, Filter, Clock3, Database } from 'lucide-react'
+import { Pencil, Trash2, Clock3, Database } from 'lucide-react'
 import { SavedQuery, DatabaseConnection } from '@/types'
-import { Drawer, Select, Input, Button, type SelectOption } from '@/components'
+import { Drawer, Input, Button } from '@/components'
 
 interface SavedQueriesDrawerProps {
   open: boolean
@@ -11,6 +11,7 @@ interface SavedQueriesDrawerProps {
   queries: SavedQuery[]
   connections: DatabaseConnection[]
   activeConnection: DatabaseConnection | null
+  onSelectConnection: (connectionId: string) => void
   onLoad: (query: SavedQuery, run?: boolean) => void
   onDelete: (id: string) => void
   onRename: (id: string, name: string) => void
@@ -23,26 +24,22 @@ export default function SavedQueriesDrawer({
   queries,
   connections,
   activeConnection,
+  onSelectConnection,
   onLoad,
   onDelete,
   onRename,
   onNewBlank,
 }: SavedQueriesDrawerProps) {
-  const [filter, setFilter] = useState<string>('all')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
 
-  const filtered = useMemo(() => {
-    if (filter === 'all') return queries
-    return queries.filter((q) => !q.connectionId || q.connectionId === filter)
-  }, [queries, filter])
-
-  const sorted = useMemo(() => [...filtered].sort((a, b) => b.createdAt - a.createdAt), [filtered])
-
-  const scopeOptions: SelectOption[] = [
-    { value: 'all', label: 'All connections' },
-    ...connections.map((c) => ({ value: c.id, label: c.name })),
-  ]
+  const sorted = useMemo(
+    () =>
+      [...queries]
+        .filter((query) => query.connectionId === activeConnection?.id)
+        .sort((a, b) => b.createdAt - a.createdAt),
+    [queries, activeConnection]
+  )
 
   return (
     <Drawer
@@ -53,28 +50,27 @@ export default function SavedQueriesDrawer({
       width={420}
       overlayLabel="Close saved queries"
     >
-      <div className="px-4 py-3 border-b border-[var(--border)] space-y-3 bg-slate-50/60">
-        <div className="space-y-2 w-full">
-          <label className="text-xs text-slate-500 flex items-center gap-2">
-            <Filter size={14} /> Scope
-          </label>
-          <Select
-            options={scopeOptions}
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="[&_select]:bg-slate-100 [&_select]:text-sm"
-          />
-          {activeConnection && filter === 'all' && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="text-xs text-rose-600 hover:text-rose-700 hover:bg-transparent"
-              onClick={() => setFilter(activeConnection.id)}
-            >
-              Filter to {activeConnection.name}
-            </Button>
-          )}
-        </div>
+      <div className="px-4 py-3 border-b border-[var(--border)] space-y-3 bg-rose-50/60">
+        {activeConnection ? (
+          <p className="text-sm text-slate-700">
+            Queries for <span className="font-medium text-pink-600">{activeConnection.name}</span>
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-slate-600">Choose a connection. Each keeps its own queries.</p>
+            {connections.map((connection) => (
+              <Button
+                key={connection.id}
+                type="button"
+                variant="secondary"
+                className="w-full justify-start"
+                onClick={() => onSelectConnection(connection.id)}
+              >
+                {connection.name}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="px-4 py-3 border-b border-[var(--border)] bg-white/90">
         <Button
@@ -90,13 +86,16 @@ export default function SavedQueriesDrawer({
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {sorted.length === 0 ? (
           <div className="text-sm text-slate-500 text-center py-6">
-            Nothing saved yet. Run a query, click Save, pick scope, done.
+            {activeConnection
+              ? `Nothing saved for ${activeConnection.name} yet.`
+              : 'Choose a connection to see its queries.'}
           </div>
         ) : (
           sorted.map((q) => {
-            const connLabel = q.connectionId
-              ? connections.find((c) => c.id === q.connectionId)?.name || 'Specific connection'
-              : 'All connections'
+            const connLabel =
+              connections.find((connection) => connection.id === q.connectionId)?.name ||
+              activeConnection?.name ||
+              'This connection'
             return (
               <div
                 key={q.id}

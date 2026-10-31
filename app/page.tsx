@@ -7,6 +7,7 @@ import {
   ConnectionModal,
   ConfigImportModal,
   SavedQueriesDrawer,
+  SaveQueryModal,
   HomeHero,
   AppHeader,
   Drawer,
@@ -20,66 +21,60 @@ export default function Home() {
   const w = useWorkspace()
 
   const queryWorkspaceProps = {
+    tabs: w.queryTabs,
+    activeTabId: w.activeTabId,
+    onSelectTab: w.selectTab,
+    onCloseTab: w.closeTab,
+    onTogglePin: w.togglePinTab,
     queryText: w.queryText,
     setQueryText: w.setQueryText,
     queryResult: w.queryResult,
     activeConnection: w.activeConnection,
     isExecuting: w.isExecuting,
     onExecute: w.handleExecuteQuery,
-    onSave: w.handleSaveCurrentQuery,
+    onSave: w.openSaveQueryModal,
   }
 
   const mainContent = !w.showWorkspace ? (
-    <div className="relative flex-1 flex items-center justify-center px-6 overflow-hidden">
+    <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-auto px-4 py-6 sm:px-6">
       <div className="floating-bg">
         <div className="floating-blob blob-1" />
         <div className="floating-blob blob-2" />
         <div className="floating-blob blob-3" />
       </div>
       <HomeHero
-        connectionsCount={w.connections.length}
-        savedCount={w.savedQueries.length}
-        hasConnections={w.hasConnectionsList}
-        onNewQuery={w.handleNewBlankQuery}
+        connections={w.connections}
         onNewConnection={w.openConnectionModal}
         onImportConfig={w.openConfigModal}
-        onViewConnections={w.openConnectionsDrawer}
-        onSavedQueries={w.openSavedDrawer}
-      />
-    </div>
-  ) : w.editingFromSaved ? (
-    <div className="flex-1 flex flex-col bg-white/70 backdrop-blur-sm">
-      <QueryWorkspace
-        {...queryWorkspaceProps}
-        toolbarVariant="saved"
-        connections={w.connections}
-        onConnectionChange={w.selectConnectionById}
-        currentSavedName={w.currentSavedName}
-        toolbarClassName="px-4 py-3 border-b border-[var(--border)] bg-white"
+        onSelectConnection={w.updateActiveConnection}
+        onEditConnection={w.openEditConnection}
       />
     </div>
   ) : (
-    <div className="flex-1 flex overflow-hidden">
-      <SchemaPanel
-        connection={w.activeConnection}
-        tables={w.schemaTables}
-        isLoading={w.isSchemaLoading}
-        error={w.schemaError}
-        onRefresh={() => w.activeConnection && w.loadSchema(w.activeConnection)}
-        onSelect={w.handleSelectTable}
-        onRun={w.handleSelectTable}
-      />
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-white/70">
+      {w.activeConnection ? (
+        <SchemaPanel
+          connection={w.activeConnection}
+          tables={w.schemaTables}
+          isLoading={w.isSchemaLoading}
+          error={w.schemaError}
+          onRefresh={() => w.activeConnection && w.loadSchema(w.activeConnection)}
+          onSelect={w.handleSelectTable}
+          onRun={w.handleSelectTable}
+        />
+      ) : null}
       <QueryWorkspace
         {...queryWorkspaceProps}
-        toolbarLeft={<span className="text-sm text-slate-700">Query Editor</span>}
+        currentSavedName={w.currentSavedName}
+        toolbarLeft={<span className="truncate text-sm text-slate-700">{w.currentSavedName || 'Query Editor'}</span>}
       />
     </div>
   )
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen text-slate-900" style={{ background: 'var(--background)' }}>
-        <div className="flex-1 flex flex-col">
+      <div className="flex h-screen min-h-0 min-w-0 overflow-hidden text-slate-900" style={{ background: 'var(--background)' }}>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <AppHeader
             activeConnection={w.activeConnection}
             connections={w.connections}
@@ -88,6 +83,7 @@ export default function Home() {
             onGoHome={w.handleGoHome}
             onOpenConnections={w.openConnectionsDrawer}
             onOpenSaved={w.openSavedDrawer}
+            showWorkspaceActions={w.showWorkspace}
             onNewQuery={w.handleNewBlankQuery}
             onNewConnection={w.openConnectionModal}
             onImportConfig={w.openConfigModal}
@@ -111,6 +107,7 @@ export default function Home() {
             w.updateActiveConnection(conn)
             w.closeConnectionsDrawer()
           }}
+          onEditConnection={w.openEditConnection}
           onNewConnection={() => {
             w.closeConnectionsDrawer()
             w.openConnectionModal()
@@ -122,9 +119,10 @@ export default function Home() {
         <SavedQueriesDrawer
           open={w.isSavedDrawerOpen}
           onClose={w.closeSavedDrawer}
-          queries={w.savedQueries}
+          queries={w.savedQueriesForActive}
           connections={w.connections}
           activeConnection={w.activeConnection}
+          onSelectConnection={w.selectConnectionById}
           onLoad={w.handleLoadSaved}
           onDelete={w.handleDeleteSaved}
           onRename={w.handleRenameSaved}
@@ -133,14 +131,26 @@ export default function Home() {
       )}
 
       {w.isConnectionModalOpen && (
-        <ConnectionModal onClose={w.closeConnectionModal} onSave={w.handleNewConnection} />
+        <ConnectionModal
+          connection={w.connectionBeingEdited}
+          onClose={w.closeConnectionModal}
+          onSave={w.handleSaveConnection}
+        />
       )}
+
+      <SaveQueryModal
+        open={w.isSaveQueryModalOpen}
+        onClose={w.closeSaveQueryModal}
+        onSave={w.handleSaveNamedQuery}
+        connectionName={w.activeConnection?.name ?? ''}
+        initialName={w.saveQueryInitialName}
+      />
 
       {w.isConfigModalOpen && (
         <ConfigImportModal
           onClose={w.closeConfigModal}
           onImport={(connection: DatabaseConnection) => {
-            w.handleNewConnection(connection)
+            w.handleSaveConnection(connection)
             w.closeConfigModal()
           }}
         />

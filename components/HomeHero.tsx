@@ -1,32 +1,36 @@
 'use client'
 
 import Image from 'next/image'
-import { ActionTile, Button } from '@/components'
+import { Pencil } from 'lucide-react'
+import { Button } from '@/components'
+import type { DatabaseConnection, DatabaseType } from '@/types'
+
+const TYPE_LABEL: Record<DatabaseType, string> = {
+  postgresql: 'PostgreSQL',
+  mysql: 'MySQL',
+  sqlite: 'SQLite',
+  mongodb: 'MongoDB',
+  redis: 'Redis',
+}
 
 interface HomeHeroProps {
-  connectionsCount: number
-  savedCount: number
-  hasConnections: boolean
-  onNewQuery: () => void
+  connections: DatabaseConnection[]
   onNewConnection: () => void
   onImportConfig: () => void
-  onViewConnections: () => void
-  onSavedQueries: () => void
+  onSelectConnection: (connection: DatabaseConnection) => void
+  onEditConnection: (connection: DatabaseConnection) => void
 }
 
 export default function HomeHero({
-  connectionsCount,
-  savedCount,
-  hasConnections,
-  onNewQuery,
+  connections,
   onNewConnection,
   onImportConfig,
-  onViewConnections,
-  onSavedQueries,
+  onSelectConnection,
+  onEditConnection,
 }: HomeHeroProps) {
   return (
-    <div className="relative bg-white/95 backdrop-blur-xl border border-[var(--border)] rounded-2xl shadow-lg p-10 max-w-5xl w-full overflow-hidden">
-      <div className="absolute inset-0 -z-10 overflow-hidden">
+    <div className="relative w-full max-w-5xl overflow-hidden rounded-2xl border border-[var(--border)] bg-white/95 p-5 shadow-lg backdrop-blur-xl sm:p-8 lg:p-10">
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
         <div className="hero-blob bg-[radial-gradient(circle_at_30%_20%,rgba(236,72,153,0.25),transparent_55%)]" />
         <div className="hero-blob hero-blob-delay bg-[radial-gradient(circle_at_80%_30%,rgba(251,191,36,0.22),transparent_55%)]" />
         <div className="hero-blob hero-blob-small bg-[radial-gradient(circle_at_50%_80%,rgba(236,72,153,0.2),transparent_50%)]" />
@@ -44,43 +48,76 @@ export default function HomeHero({
               Connect and run your data fast
             </h2>
             <p className="text-slate-600 leading-relaxed text-balance">
-              Paste a config, pick a saved profile, or jump straight into a new query. Everything stays on your device.
+              Open a connection or paste a config. Everything stays on your device.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
-            <Badge label={`${connectionsCount} connections`} active={hasConnections} />
-            <Badge label={`${savedCount} saved queries`} active={savedCount > 0} />
+            <Badge label={`${connections.length} connections`} active={connections.length > 0} />
             <Badge label="Local-only" active />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <CTAButton label="New query" onClick={onNewQuery} />
             <CTAButton label="Add connection" onClick={onNewConnection} />
             <CTAButton label="Import config" onClick={onImportConfig} altPalette />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <ActionTile
-            title="View connections"
-            hint="Pick from saved profiles."
-            disabled={!hasConnections}
-            disabledHint="Add one to enable."
-            badge={`${connectionsCount}`}
-            onClick={onViewConnections}
-          />
-          <ActionTile
-            title="Saved queries"
-            hint="Reopen and run quickly."
-            disabled={!hasConnections && savedCount === 0}
-            disabledHint="Save a query or add a connection."
-            badge={`${savedCount}`}
-            onClick={onSavedQueries}
-          />
-        </div>
+        <ConnectionShortcuts
+          connections={connections}
+          onSelectConnection={onSelectConnection}
+          onEditConnection={onEditConnection}
+        />
       </div>
     </div>
   )
 }
+function ConnectionShortcuts({
+  connections,
+  onSelectConnection,
+  onEditConnection,
+}: {
+  connections: DatabaseConnection[]
+  onSelectConnection: (connection: DatabaseConnection) => void
+  onEditConnection: (connection: DatabaseConnection) => void
+}) {
+  return (
+    <section className="rounded-2xl border border-rose-100 bg-white/80 p-4 shadow-sm">
+      <h3 className="text-sm font-semibold text-slate-900">Open a connection</h3>
+      {connections.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-500">Add a connection and it will show up here.</p>
+      ) : (
+        <ul className="mt-3 flex max-h-72 flex-col gap-2 overflow-y-auto">
+          {connections.map((connection) => (
+            <li key={connection.id} className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => onSelectConnection(connection)}
+                className="min-w-0 flex-1 rounded-xl border border-rose-100 bg-white px-3 py-2.5 text-left transition-colors hover:border-pink-300 hover:bg-rose-50"
+              >
+                <span className="block truncate text-sm font-semibold text-slate-900">
+                  {connection.name}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-rose-700">
+                  {TYPE_LABEL[connection.type]} · {connection.database}
+                </span>
+              </button>
+              <Button
+                type="button"
+                variant="icon"
+                className="text-pink-600 hover:bg-pink-50 hover:text-pink-700"
+                title="Edit connection"
+                aria-label={`Edit ${connection.name}`}
+                onClick={() => onEditConnection(connection)}
+              >
+                <Pencil size={14} aria-hidden />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 function Badge({ label, active }: { label: string; active?: boolean }) {
   return (
     <span
@@ -104,13 +141,13 @@ function CTAButton({
   altPalette?: boolean
 }) {
   const gradientClass = altPalette
-    ? 'from-amber-400 via-pink-500 to-rose-500'
-    : 'from-rose-500 via-pink-500 to-amber-400'
+    ? 'from-pink-400 via-rose-400 to-rose-500'
+    : 'from-rose-500 via-pink-500 to-pink-400'
   return (
     <Button
       variant="primary"
       onClick={onClick}
-      className={`flex-1 min-w-[220px] justify-center py-3 rounded-xl text-base font-semibold bg-gradient-to-r ${gradientClass} shadow-md`}
+      className={`w-full min-w-0 flex-1 justify-center rounded-xl bg-gradient-to-r py-3 text-base font-semibold shadow-md ${gradientClass}`}
     >
       <span className="text-lg leading-none">＋</span> {label}
     </Button>

@@ -66,6 +66,8 @@ export interface ElectronAPI {
     data: Record<string, unknown>[],
     defaultPath?: string
   ) => Promise<ExportExcelResult>
+  onCloseActiveTab: (handler: () => void) => () => void
+  closeWindow: () => void
 }
 
 declare global {

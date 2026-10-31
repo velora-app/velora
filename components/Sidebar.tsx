@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Database, Plus, Server, ChevronRight, ChevronDown } from 'lucide-react'
+import { Database, Plus, Server, ChevronRight, ChevronDown, Pencil } from 'lucide-react'
 import { DatabaseConnection } from '@/types'
 import { Button } from '@/components'
 
@@ -9,6 +9,7 @@ interface SidebarProps {
   connections: DatabaseConnection[]
   activeConnection: DatabaseConnection | null
   onSelectConnection: (connection: DatabaseConnection) => void
+  onEditConnection: (connection: DatabaseConnection) => void
   onNewConnection: () => void
 }
 
@@ -16,6 +17,7 @@ export default function Sidebar({
   connections,
   activeConnection,
   onSelectConnection,
+  onEditConnection,
   onNewConnection,
 }: SidebarProps) {
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(new Set())
@@ -31,7 +33,7 @@ export default function Sidebar({
   }
 
   return (
-    <div className="w-64 bg-[var(--panel)] border-r border-[var(--border)] flex flex-col">
+    <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col bg-[var(--panel)]">
       <div className="p-4 border-b border-[var(--border)]">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-slate-900">Connections</h2>
@@ -74,6 +76,19 @@ export default function Sidebar({
                     }
                   />
                   <span className="flex-1 truncate">{connection.name}</span>
+                  <Button
+                    type="button"
+                    variant="icon"
+                    className="text-pink-600 hover:bg-pink-50 hover:text-pink-700"
+                    title="Edit connection"
+                    aria-label={`Edit ${connection.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onEditConnection(connection)
+                    }}
+                  >
+                    <Pencil size={14} aria-hidden />
+                  </Button>
                 </div>
                 {expandedConnections.has(connection.id) && (
                   <div className="ml-6 mt-1 space-y-1">

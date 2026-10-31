@@ -14,6 +14,7 @@ interface AppHeaderProps {
   onGoHome: () => void
   onOpenConnections: () => void
   onOpenSaved: () => void
+  showWorkspaceActions: boolean
   onNewQuery: () => void
   onNewConnection: () => void
   onImportConfig: () => void
@@ -37,6 +38,7 @@ export default function AppHeader({
   onGoHome,
   onOpenConnections,
   onOpenSaved,
+  showWorkspaceActions,
   onNewQuery,
   onNewConnection,
   onImportConfig,
@@ -50,8 +52,8 @@ export default function AppHeader({
   }
 
   return (
-    <div className="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] bg-white/95 backdrop-blur-sm shadow-sm">
-      <div className="flex items-center gap-3 text-sm text-slate-600">
+    <div className="app-header flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[var(--border)] bg-white/95 py-2 pr-4 backdrop-blur-sm shadow-sm">
+      <div className="flex min-w-0 shrink-0 items-center gap-3 text-sm text-slate-600">
         <Button
           variant="ghost"
           onClick={onGoHome}
@@ -86,13 +88,16 @@ export default function AppHeader({
         )} */}
       </div>
 
-      <div className="flex items-center gap-3">
-        {HEADER_ACTIONS.map(({ id, label, variant }) => (
-          <Button key={id} variant={variant} onClick={handlers[id]}>
+      <nav className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+        {HEADER_ACTIONS.filter((action) => {
+          if (!showWorkspaceActions && (action.id === 'saved' || action.id === 'newQuery')) return false
+          return true
+        }).map(({ id, label, variant }) => (
+          <Button key={id} variant={variant} onClick={handlers[id]} className="shrink-0 whitespace-nowrap">
             {label}
           </Button>
         ))}
-      </div>
+      </nav>
     </div>
   )
 }

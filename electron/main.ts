@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, net, protocol } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import { pathToFileURL } from 'url'
 import type {
   QueryResult,
   ExecuteQueryPayload,
@@ -12,7 +13,35 @@ import type {
 import { executeQuery } from './database'
 import { fetchSchema } from './schema'
 
+const appScheme = 'app'
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: appScheme,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+])
+
 let mainWindow: BrowserWindow | null = null
+
+function registerAppProtocol(): void {
+  const outDir = path.join(app.getAppPath(), 'out')
+  protocol.handle(appScheme, (request) => {
+    const pathname = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '')
+    const relativePath = pathname.length > 0 ? pathname : 'index.html'
+    const filePath = path.normalize(path.join(outDir, relativePath))
+    const outsideOutDir = path.relative(outDir, filePath).startsWith('..') || path.isAbsolute(path.relative(outDir, filePath))
+    if (outsideOutDir || !fs.existsSync(filePath)) {
+      return new Response('Not found', { status: 404 })
+    }
+    return net.fetch(pathToFileURL(filePath).toString(), { bypassCustomProtocolHandlers: true })
+  })
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -21,13 +50,14 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     backgroundColor: '#1a1a1a',
-    icon: path.join(__dirname, '../assets/main-logo-icon.svg'),
+    icon: path.join(app.getAppPath(), 'assets', 'main-logo-icon.svg'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
     titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 18 },
     frame: true,
   })
 
@@ -37,15 +67,32 @@ function createWindow(): void {
     mainWindow.loadURL('http://localhost:3000')
     mainWindow.webContents.openDevTools()
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../out/index.html'))
+    void mainWindow.loadURL(`${appScheme}://velora/index.html`)
   }
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const closeShortcut =
+      input.type === 'keyDown' &&
+      input.key.toLowerCase() === 'w' &&
+      (input.meta || input.control) &&
+      !input.shift &&
+      !input.alt
+    if (!closeShortcut || !mainWindow) return
+    event.preventDefault()
+    mainWindow.webContents.send('close-active-tab')
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null
   })
 }
 
+ipcMain.on('close-window', () => {
+  mainWindow?.close()
+})
+
 app.whenReady().then(() => {
+  registerAppProtocol()
   createWindow()
 
   app.on('activate', () => {

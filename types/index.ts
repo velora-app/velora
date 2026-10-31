@@ -3,6 +3,7 @@
  * Re-exports from database, API, and Electron type definitions.
  */
 export * from './database'
+export * from './queryTab'
 export * from './api'
 export type {
   SaveFileDialogOptions,

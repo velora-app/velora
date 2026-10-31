@@ -33,7 +33,7 @@ export default function SchemaPanel({
   }, [filter, tables])
 
   return (
-    <div className="w-72 bg-white border-r border-[var(--border)] flex flex-col">
+    <div className="flex w-[min(18rem,42vw)] min-w-[9.5rem] shrink-0 flex-col border-r border-[var(--border)] bg-white">
       <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FolderTree size={16} className="text-rose-500" />
@@ -89,11 +89,11 @@ export default function SchemaPanel({
                 onClick={() => onSelect(table)}
                 onDoubleClick={() => onRun?.(table)}
               >
-                <div className="flex items-center gap-2 text-sm text-slate-800">
-                  {renderIcon(table.type)}
-                  <div className="flex flex-col">
-                    <span className="font-medium text-slate-900">{table.name}</span>
-                    <span className="text-xs text-slate-500">
+                <div className="flex min-w-0 items-center gap-2 text-sm text-slate-800">
+                  <ObjectIcon type={table.type} name={`${table.schema || ''}.${table.name}`} />
+                  <div className="flex min-w-0 flex-col">
+                    <span className="truncate font-medium text-slate-900">{table.name}</span>
+                    <span className="truncate text-xs text-slate-500">
                       {table.schema || labelForType(table.type)}
                     </span>
                   </div>
@@ -110,16 +110,37 @@ export default function SchemaPanel({
   )
 }
 
-function renderIcon(type: DatabaseTable['type']) {
+/** Distinct from the pink action buttons, and stable for the same object name. */
+const OBJECT_COLORS = [
+  'text-teal-600',
+  'text-violet-600',
+  'text-sky-600',
+  'text-indigo-600',
+  'text-emerald-600',
+  'text-cyan-600',
+  'text-blue-600',
+  'text-purple-600',
+]
+
+function colorForObject(name: string): string {
+  let hash = 0
+  for (let index = 0; index < name.length; index += 1) {
+    hash = (hash * 31 + name.charCodeAt(index)) >>> 0
+  }
+  return OBJECT_COLORS[hash % OBJECT_COLORS.length]
+}
+
+function ObjectIcon({ type, name }: { type: DatabaseTable['type']; name: string }) {
+  const className = `${colorForObject(name)} shrink-0`
   switch (type) {
     case 'view':
-      return <Eye size={16} className="text-teal-300" />
+      return <Eye size={16} className={className} />
     case 'collection':
-      return <Database size={16} className="text-amber-300" />
+      return <Database size={16} className={className} />
     case 'key':
-      return <KeyRound size={16} className="text-purple-300" />
+      return <KeyRound size={16} className={className} />
     default:
-      return <TableIcon size={16} className="text-blue-300" />
+      return <TableIcon size={16} className={className} />
   }
 }
 

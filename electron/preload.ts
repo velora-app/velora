@@ -7,6 +7,12 @@ const electronAPI: ElectronAPI = {
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', { filePath, data }),
   exportExcel: (data, defaultPath) => ipcRenderer.invoke('export-excel', { data, defaultPath }),
   fetchSchema: (connection) => ipcRenderer.invoke('fetch-schema', { connection }),
+  onCloseActiveTab: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on('close-active-tab', listener)
+    return () => ipcRenderer.removeListener('close-active-tab', listener)
+  },
+  closeWindow: () => ipcRenderer.send('close-window'),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

@@ -6,6 +6,7 @@
  */
 export * from './api'
 export * from './storage'
+export * from './workspace'
 export * from './remote'
 export * from './export'
 export * from './logger'

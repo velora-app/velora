@@ -1,77 +1,70 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { DatabaseConnection, SavedQuery } from '@/types'
-import { Modal, Input, Select, Button, type SelectOption } from '@/components'
+import { Modal, Input, Button } from '@/components'
 
 interface SaveQueryModalProps {
   open: boolean
   onClose: () => void
-  onSave: (query: SavedQuery) => void
-  connections: DatabaseConnection[]
-  activeConnection: DatabaseConnection | null
-  queryText: string
+  onSave: (name: string) => void
+  connectionName: string
+  initialName?: string
 }
 
 export default function SaveQueryModal({
   open,
   onClose,
   onSave,
-  connections,
-  activeConnection,
-  queryText,
+  connectionName,
+  initialName = '',
 }: SaveQueryModalProps) {
-  const [name, setName] = useState('')
-  const [scope, setScope] = useState<string>('all')
+  const [name, setName] = useState(initialName)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
-      const firstLine = queryText.split('\n').find(Boolean) || 'Saved query'
-      setName(firstLine.slice(0, 80))
-      setScope(activeConnection ? activeConnection.id : 'all')
+      setName(initialName)
+      setError(null)
     }
-  }, [open, queryText, activeConnection])
+  }, [open, initialName])
 
-  const scopeOptions: SelectOption[] = [
-    { value: 'all', label: 'All connections' },
-    ...connections.map((c) => ({ value: c.id, label: c.name })),
-  ]
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!name.trim()) return
-    const connection = scope === 'all' ? undefined : scope
-    const newQuery: SavedQuery = {
-      id: `sq-${Date.now()}`,
-      name: name.trim(),
-      query: queryText,
-      connectionId: connection,
-      connectionName: connection ? connections.find((c) => c.id === connection)?.name : 'All',
-      createdAt: Date.now(),
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setError('Give this query a name.')
+      return
     }
-    onSave(newQuery)
-    onClose()
+    onSave(trimmed)
   }
 
   return (
     <Modal open={open} onClose={onClose} title="Save query" size="sm">
       <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <p className="text-sm text-slate-600">
+          Saved for <span className="font-medium text-pink-600">{connectionName}</span>. It stays on
+          this connection.
+        </p>
+        {error && (
+          <div
+            className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+            role="alert"
+          >
+            {error}
+          </div>
+        )}
         <Input
           label="Name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(event) => {
+            setName(event.target.value)
+            setError(null)
+          }}
+          placeholder="Orders this week"
           maxLength={120}
+          autoFocus
           required
         />
-        <Select
-          label="Scope"
-          options={scopeOptions}
-          value={scope}
-          onChange={(e) => setScope(e.target.value)}
-        />
-        <p className="text-xs text-slate-500 -mt-2">
-          Limit to a specific connection if the SQL depends on that database.
-        </p>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel

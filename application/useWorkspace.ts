@@ -3,11 +3,14 @@
  * Encapsulates all workspace state and handlers so the page only composes UI.
  * Depends on domain (types) and infrastructure (lib).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { DatabaseConnection, DatabaseTable, QueryResult, SavedQuery } from '@/types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { DatabaseConnection, DatabaseTable, QueryResult, QueryTab, SavedQuery } from '@/types'
 import {
   loadConnections,
   saveConnections,
+  applyConnectionSave,
+  queriesForConnection,
+  saveNamedQuery,
   loadSavedQueries,
   saveSavedQueries,
   loadActiveConnectionId,
@@ -17,83 +20,119 @@ import {
   fetchSchemaRemote,
   logger,
   SAVED_QUERIES_LIMIT,
+  adoptUnscopedTabs,
+  assignSavedTab,
+  blankQueryTitle,
+  closeQueryTab,
+  openQueryTab,
+  renameSavedTabs,
+  setTabResult,
+  tabsForConnection,
+  toggleQueryTabPin,
+  unlinkSavedTabs,
+  updateTabQuery,
 } from '@/lib'
 
 export function useWorkspace() {
   const [connections, setConnections] = useState<DatabaseConnection[]>([])
   const [activeConnection, setActiveConnection] = useState<DatabaseConnection | null>(null)
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null)
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false)
+  const [connectionBeingEdited, setConnectionBeingEdited] = useState<DatabaseConnection | null>(null)
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false)
   const [isConnectionsDrawerOpen, setIsConnectionsDrawerOpen] = useState(false)
   const [isSavedDrawerOpen, setIsSavedDrawerOpen] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
-  const [queryText, setQueryText] = useState('')
+  const [executingTabId, setExecutingTabId] = useState<string | null>(null)
+  const [queryTabs, setQueryTabs] = useState<QueryTab[]>([])
+  const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [editingFromSaved, setEditingFromSaved] = useState(false)
-  const [currentSavedId, setCurrentSavedId] = useState<string | null>(null)
-  const [currentSavedName, setCurrentSavedName] = useState<string | null>(null)
   const [schemaTables, setSchemaTables] = useState<DatabaseTable[]>([])
   const [isSchemaLoading, setIsSchemaLoading] = useState(false)
   const [schemaError, setSchemaError] = useState<string | null>(null)
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([])
   const [isHydrated, setIsHydrated] = useState(false)
+  const [isSaveQueryModalOpen, setIsSaveQueryModalOpen] = useState(false)
+  const tabsRef = useRef<QueryTab[]>([])
+  const activeTabIdRef = useRef<string | null>(null)
+  const activeConnectionRef = useRef<DatabaseConnection | null>(null)
+  tabsRef.current = queryTabs
+  activeTabIdRef.current = activeTabId
+  activeConnectionRef.current = activeConnection
 
   const updateActiveConnection = useCallback((conn: DatabaseConnection | null) => {
     setActiveConnection(conn)
     saveActiveConnectionId(conn ? conn.id : null)
+    if (!conn) return
+    setQueryTabs((prev) => adoptUnscopedTabs(prev, conn.id))
   }, [])
 
-  const handleNewConnection = useCallback((connection: DatabaseConnection) => {
-    setConnections((prev) => {
-      const updated = [...prev, connection]
-      saveConnections(updated)
-      return updated
-    })
-    setActiveConnection(connection)
-    saveActiveConnectionId(connection.id)
-    setIsConnectionModalOpen(false)
-    setIsConnectionsDrawerOpen(false)
-  }, [])
+  const connectionKey = activeConnection?.id ?? ''
+  const visibleTabs = useMemo(
+    () => tabsForConnection(queryTabs, connectionKey),
+    [queryTabs, connectionKey]
+  )
+  const activeTab = visibleTabs.find((tab) => tab.id === activeTabId) ?? null
+  const queryText = activeTab?.queryText ?? ''
 
-  const handleSaveCurrentQuery = useCallback(() => {
-    if (!queryText.trim()) return
-    const base: SavedQuery = {
-      id: `sq-${Date.now()}`,
-      name: queryText.split('\n')[0].slice(0, 40).trim() || 'Query',
-      query: queryText,
-      connectionId: activeConnection?.id,
-      connectionName: activeConnection?.name,
-      createdAt: Date.now(),
-    }
+  useEffect(() => {
+    if (visibleTabs.some((tab) => tab.id === activeTabId)) return
+    setActiveTabId(visibleTabs[0]?.id ?? null)
+  }, [visibleTabs, activeTabId])
 
-    setSavedQueries((prev) => {
-      // Update in place when editing a saved query (match by id – safe for duplicate names)
-      if (editingFromSaved && currentSavedId) {
-        const existing = prev.find((q) => q.id === currentSavedId)
-        if (existing) {
-          const updated = prev
-            .map((q) =>
-              q.id === currentSavedId
-                ? {
-                    ...existing,
-                    name: base.name,
-                    query: base.query,
-                    connectionId: base.connectionId,
-                    connectionName: base.connectionName,
-                  }
-                : q
-            )
-            .slice(0, SAVED_QUERIES_LIMIT)
-          saveSavedQueries(updated)
-          setCurrentSavedName(base.name)
-          return updated
-        }
+  const handleSaveConnection = useCallback(
+    (connection: DatabaseConnection) => {
+      const result = applyConnectionSave(
+        connections,
+        savedQueries,
+        connection,
+        activeConnection?.id ?? null
+      )
+      setConnections(result.connections)
+      saveConnections(result.connections)
+      if (result.savedQueries !== savedQueries) {
+        setSavedQueries(result.savedQueries)
+        saveSavedQueries(result.savedQueries)
       }
-      const updated = [base, ...prev].slice(0, SAVED_QUERIES_LIMIT)
-      saveSavedQueries(updated)
-      return updated
-    })
-  }, [queryText, activeConnection, editingFromSaved, currentSavedId])
+      if (result.created) {
+        updateActiveConnection(connection)
+        setIsConnectionsDrawerOpen(false)
+      } else if (activeConnection?.id === connection.id) {
+        updateActiveConnection(connection)
+      }
+      setConnectionBeingEdited(null)
+      setIsConnectionModalOpen(false)
+    },
+    [connections, savedQueries, activeConnection, updateActiveConnection]
+  )
+
+  const openSaveQueryModal = useCallback(() => {
+    if (!queryText.trim() || !activeConnection) return
+    setIsSaveQueryModalOpen(true)
+  }, [queryText, activeConnection])
+
+  const handleSaveNamedQuery = useCallback(
+    (name: string) => {
+      if (!name.trim() || !queryText.trim() || !activeConnection) return
+      const result = saveNamedQuery(
+        savedQueries,
+        {
+          name,
+          query: queryText,
+          connectionId: activeConnection.id,
+          connectionName: activeConnection.name,
+          existingId: activeTab?.savedId ?? null,
+        },
+        SAVED_QUERIES_LIMIT
+      )
+      setSavedQueries(result.queries)
+      saveSavedQueries(result.queries)
+      const tabId = activeTabIdRef.current
+      if (tabId) setQueryTabs((prev) => assignSavedTab(prev, tabId, result.savedId, result.savedName))
+      setEditingFromSaved(true)
+      setIsSaveQueryModalOpen(false)
+    },
+    [queryText, activeConnection, savedQueries, activeTab]
+  )
 
   const handleDeleteSaved = useCallback((id: string) => {
     setSavedQueries((prev) => {
@@ -101,11 +140,8 @@ export function useWorkspace() {
       saveSavedQueries(updated)
       return updated
     })
-    if (currentSavedId === id) {
-      setCurrentSavedId(null)
-      setCurrentSavedName(null)
-    }
-  }, [currentSavedId])
+    setQueryTabs((prev) => unlinkSavedTabs(prev, id))
+  }, [])
 
   const loadSchema = useCallback(async (connection: DatabaseConnection) => {
     setIsSchemaLoading(true)
@@ -142,20 +178,24 @@ export function useWorkspace() {
   }, [activeConnection, loadSchema])
 
   const handleExecuteQuery = useCallback(
-    async (query: string) => {
-      if (!activeConnection || !query.trim()) return
+    async (query: string, tabId?: string) => {
+      const targetId = tabId ?? activeTabIdRef.current
+      if (!activeConnection || !query.trim() || !targetId) return
       setIsExecuting(true)
+      setExecutingTabId(targetId)
       try {
         const result = await runQuery(activeConnection, query)
-        setQueryResult(result)
+        setQueryTabs((prev) => setTabResult(prev, targetId, result))
       } catch (error) {
         logger.error('Query execution error', error)
-        setQueryResult({
+        const failed: QueryResult = {
           columns: [],
           rows: [],
           error: error instanceof Error ? error.message : 'Unknown error',
-        })
+        }
+        setQueryTabs((prev) => setTabResult(prev, targetId, failed))
       } finally {
+        setExecutingTabId((current) => (current === targetId ? null : current))
         setIsExecuting(false)
       }
     },
@@ -193,41 +233,60 @@ export function useWorkspace() {
     [activeConnection, formatIdentifier]
   )
 
+  const rememberTab = useCallback((tabs: QueryTab[], activeId: string) => {
+    setQueryTabs(tabs)
+    setActiveTabId(activeId)
+  }, [])
+
   const handleSelectTable = useCallback(
     (table: DatabaseTable) => {
       if (!activeConnection) return
       const statement = buildSelectStatement(table)
       if (!statement) return
-      setQueryText(statement)
-      handleExecuteQuery(statement)
+      const opened = openQueryTab(tabsRef.current, {
+        connectionId: activeConnection.id,
+        title: table.name,
+        queryText: statement,
+        tableKey: `${table.schema || ''}.${table.name}`,
+      })
+      rememberTab(opened.tabs, opened.activeId)
+      setEditingFromSaved(true)
+      if (opened.created) void handleExecuteQuery(statement, opened.activeId)
     },
-    [activeConnection, buildSelectStatement, handleExecuteQuery]
+    [activeConnection, buildSelectStatement, handleExecuteQuery, rememberTab]
   )
 
   const handleLoadSaved = useCallback(
     (query: SavedQuery, run?: boolean) => {
-      setQueryText(query.query)
+      if (!query.connectionId) return
+      const conn = connections.find((item) => item.id === query.connectionId) ?? null
+      if (!conn) return
+      const opened = openQueryTab(tabsRef.current, {
+        connectionId: conn.id,
+        title: query.name,
+        queryText: query.query,
+        savedId: query.id,
+      })
+      rememberTab(opened.tabs, opened.activeId)
       setIsSavedDrawerOpen(false)
       setEditingFromSaved(true)
-      setCurrentSavedId(query.id)
-      setCurrentSavedName(query.name)
-      if (query.connectionId) {
-        const conn = connections.find((c) => c.id === query.connectionId) ?? null
-        updateActiveConnection(conn)
-      }
-      if (run) handleExecuteQuery(query.query)
+      updateActiveConnection(conn)
+      if (run && opened.created) void handleExecuteQuery(query.query, opened.activeId)
     },
-    [connections, handleExecuteQuery, updateActiveConnection]
+    [connections, handleExecuteQuery, rememberTab, updateActiveConnection]
   )
 
   const handleNewBlankQuery = useCallback(() => {
-    setQueryText('')
-    setQueryResult(null)
+    const connectionId = activeConnectionRef.current?.id ?? ''
+    const opened = openQueryTab(tabsRef.current, {
+      connectionId,
+      title: blankQueryTitle(tabsRef.current, connectionId),
+      queryText: '',
+    })
+    rememberTab(opened.tabs, opened.activeId)
     setEditingFromSaved(true)
-    setCurrentSavedId(null)
-    setCurrentSavedName(null)
     setIsSavedDrawerOpen(false)
-  }, [])
+  }, [rememberTab])
 
   const handleExportSaved = useCallback(async (query: SavedQuery) => {
     await saveTextFile(query.query, `${query.name || 'query'}.sql`, {
@@ -238,26 +297,82 @@ export function useWorkspace() {
 
   const handleGoHome = useCallback(() => {
     updateActiveConnection(null)
-    setQueryResult(null)
     setSchemaTables([])
-    setQueryText('')
     setEditingFromSaved(false)
-    setCurrentSavedId(null)
-    setCurrentSavedName(null)
   }, [updateActiveConnection])
 
-  const handleRenameSaved = useCallback(
-    (id: string, name: string) => {
-      const renamed = savedQueries.find((q) => q.id === id)
-      setSavedQueries((prev) => {
-        const updated = prev.map((q) => (q.id === id ? { ...q, name } : q))
-        saveSavedQueries(updated)
-        return updated
-      })
-      if (renamed?.id === currentSavedId) setCurrentSavedName(name)
-    },
-    [savedQueries, currentSavedId]
+  const handleRenameSaved = useCallback((id: string, name: string) => {
+    setSavedQueries((prev) => {
+      const updated = prev.map((q) => (q.id === id ? { ...q, name } : q))
+      saveSavedQueries(updated)
+      return updated
+    })
+    setQueryTabs((prev) => renameSavedTabs(prev, id, name))
+  }, [])
+
+  const setQueryText = useCallback((value: string) => {
+    const tabId = activeTabIdRef.current
+    if (!tabId) return
+    setQueryTabs((prev) => updateTabQuery(prev, tabId, value))
+  }, [])
+
+  const selectTab = useCallback((tabId: string) => {
+    setActiveTabId(tabId)
+  }, [])
+
+  const closeTab = useCallback((tabId: string) => {
+    const result = closeQueryTab(tabsRef.current, activeTabIdRef.current, tabId)
+    if (!result.closed) return
+    setQueryTabs(result.tabs)
+    setActiveTabId(result.activeId)
+  }, [])
+
+  const togglePinTab = useCallback((tabId: string) => {
+    setQueryTabs((prev) => toggleQueryTabPin(prev, tabId))
+  }, [])
+
+  const closeActiveTab = useCallback(() => {
+    if (typeof document !== 'undefined' && document.querySelector('[role="dialog"]')) return
+    const connectionId = activeConnectionRef.current?.id ?? ''
+    const visible = tabsForConnection(tabsRef.current, connectionId)
+    const current = visible.find((tab) => tab.id === activeTabIdRef.current) ?? null
+    if (!current) {
+      window.electronAPI?.closeWindow?.()
+      return
+    }
+    if (current.pinned) return
+    const result = closeQueryTab(tabsRef.current, current.id, current.id)
+    if (!result.closed) return
+    setQueryTabs(result.tabs)
+    setActiveTabId(result.activeId)
+  }, [])
+
+  useEffect(() => {
+    const onCloseRequest = () => closeActiveTab()
+    if (window.electronAPI?.onCloseActiveTab) {
+      return window.electronAPI.onCloseActiveTab(onCloseRequest)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'w' || event.repeat) return
+      if (!event.metaKey && !event.ctrlKey) return
+      if (event.shiftKey || event.altKey) return
+      event.preventDefault()
+      onCloseRequest()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [closeActiveTab])
+
+  const savedQueriesForActive = useMemo(
+    () => (activeConnection ? queriesForConnection(savedQueries, activeConnection.id) : []),
+    [savedQueries, activeConnection]
   )
+  const saveQueryInitialName = useMemo(() => {
+    if (!activeTab?.savedId || !activeConnection) return ''
+    const saved = savedQueries.find((query) => query.id === activeTab.savedId)
+    if (!saved || saved.connectionId !== activeConnection.id) return ''
+    return saved.name
+  }, [activeTab, activeConnection, savedQueries])
 
   const hasConnection = useMemo(() => Boolean(activeConnection), [activeConnection])
   const hasConnectionsList = useMemo(
@@ -281,16 +396,20 @@ export function useWorkspace() {
     // state
     connections,
     activeConnection,
-    queryResult,
+    queryResult: activeTab?.result ?? null,
     queryText,
     setQueryText,
+    queryTabs: visibleTabs,
+    activeTabId: activeTab?.id ?? null,
     schemaTables,
     isSchemaLoading,
     schemaError,
     savedQueries,
-    isExecuting,
+    savedQueriesForActive,
+    saveQueryInitialName,
+    isExecuting: Boolean(activeTab && executingTabId === activeTab.id && isExecuting),
     editingFromSaved,
-    currentSavedName,
+    currentSavedName: activeTab?.title ?? null,
     hasConnection,
     hasConnectionsList,
     showWorkspace,
@@ -303,20 +422,34 @@ export function useWorkspace() {
     setIsConnectionsDrawerOpen,
     isSavedDrawerOpen,
     setIsSavedDrawerOpen,
+    isSaveQueryModalOpen,
     // convenience (so page avoids inline lambdas)
-    closeConnectionModal: () => setIsConnectionModalOpen(false),
+    connectionBeingEdited,
+    closeConnectionModal: () => {
+      setIsConnectionModalOpen(false)
+      setConnectionBeingEdited(null)
+    },
     closeConfigModal: () => setIsConfigModalOpen(false),
-    openConnectionModal: () => setIsConnectionModalOpen(true),
+    openConnectionModal: () => {
+      setConnectionBeingEdited(null)
+      setIsConnectionModalOpen(true)
+    },
+    openEditConnection: (connection: DatabaseConnection) => {
+      setConnectionBeingEdited(connection)
+      setIsConnectionModalOpen(true)
+    },
     openConfigModal: () => setIsConfigModalOpen(true),
     closeConnectionsDrawer: () => setIsConnectionsDrawerOpen(false),
     openConnectionsDrawer: () => setIsConnectionsDrawerOpen(true),
     closeSavedDrawer: () => setIsSavedDrawerOpen(false),
     openSavedDrawer: () => setIsSavedDrawerOpen(true),
+    closeSaveQueryModal: () => setIsSaveQueryModalOpen(false),
+    openSaveQueryModal,
     selectConnectionById,
     // actions
     updateActiveConnection,
-    handleNewConnection,
-    handleSaveCurrentQuery,
+    handleSaveConnection,
+    handleSaveNamedQuery,
     handleDeleteSaved,
     handleLoadSaved,
     handleNewBlankQuery,
@@ -326,5 +459,8 @@ export function useWorkspace() {
     handleSelectTable,
     handleGoHome,
     handleRenameSaved,
+    selectTab,
+    closeTab,
+    togglePinTab,
   }
 }

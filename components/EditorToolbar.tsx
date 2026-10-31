@@ -7,9 +7,7 @@ interface EditorToolbarProps {
   variant: 'saved' | 'main'
   title?: string
   currentSavedName?: string | null
-  connections: DatabaseConnection[]
   activeConnection: DatabaseConnection | null
-  onConnectionChange?: (id: string) => void
   onSave: () => void
   onRun: () => void
   isExecuting: boolean
@@ -23,9 +21,7 @@ export default function EditorToolbar({
   variant,
   title = 'Query Editor',
   currentSavedName,
-  connections,
   activeConnection,
-  onConnectionChange,
   onSave,
   onRun,
   isExecuting,
@@ -42,30 +38,27 @@ export default function EditorToolbar({
       : title
 
   return (
-    <div className={`flex items-center justify-between ${toolbarClassName}`}>
-      <div className="flex items-center gap-3">
+    <div className={`flex min-w-0 flex-wrap items-center justify-between gap-2 ${toolbarClassName}`}>
+      <div className="flex min-w-0 items-center gap-3">
         {leftContent ?? <div className="text-sm text-slate-700">{label}</div>}
-        {variant === 'saved' && onConnectionChange && (
-          <select
-            value={activeConnection?.id || ''}
-            onChange={(e) => onConnectionChange(e.target.value)}
-            className="px-3 py-2 border border-[var(--border)] rounded-md text-sm text-slate-800"
-          >
-            <option value="">Select connection to run</option>
-            {connections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+        {activeConnection && (
+          <span className="max-w-[12rem] truncate rounded border border-rose-100 bg-rose-50 px-2 py-1 text-xs text-rose-700">
+            {activeConnection.name}
+          </span>
         )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Button variant="secondary" onClick={onSave} disabled={!canSave}>
           Save query
         </Button>
-        <Button variant="primary" onClick={onRun} disabled={!canRun}>
-          {isExecuting ? 'Executing...' : 'Run'}
+        <Button
+          variant="primary"
+          onClick={onRun}
+          disabled={!canRun && !isExecuting}
+          loading={isExecuting}
+          loadingLabel="Running"
+        >
+          Run ⌘↵
         </Button>
       </div>
     </div>

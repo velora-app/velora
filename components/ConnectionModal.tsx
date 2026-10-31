@@ -6,6 +6,7 @@ import { DatabaseConnection, DatabaseType } from '@/types'
 import { Modal, Input, Select, Checkbox, Button, type SelectOption } from '@/components'
 
 interface ConnectionModalProps {
+  connection?: DatabaseConnection | null
   onClose: () => void
   onSave: (connection: DatabaseConnection) => void
 }
@@ -23,8 +24,8 @@ const DATABASE_TYPE_OPTIONS: SelectOption[] = DATABASE_TYPES.map((t) => ({
   label: t.label,
 }))
 
-export default function ConnectionModal({ onClose, onSave }: ConnectionModalProps) {
-  const [formData, setFormData] = useState<Partial<DatabaseConnection>>({
+function blankConnection(): Partial<DatabaseConnection> {
+  return {
     name: '',
     type: 'postgresql',
     host: 'localhost',
@@ -33,36 +34,56 @@ export default function ConnectionModal({ onClose, onSave }: ConnectionModalProp
     username: '',
     password: '',
     ssl: false,
-  })
+  }
+}
+
+export default function ConnectionModal({
+  connection = null,
+  onClose,
+  onSave,
+}: ConnectionModalProps) {
+  const isEditing = connection !== null
+  const [formData, setFormData] = useState<Partial<DatabaseConnection>>(
+    connection === null
+      ? blankConnection()
+      : {
+          name: connection.name,
+          type: connection.type,
+          host: connection.host,
+          port: connection.port,
+          database: connection.database,
+          username: connection.username,
+          password: connection.password,
+          ssl: connection.ssl ?? false,
+        }
+  )
   const [validationError, setValidationError] = useState<string | null>(null)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setValidationError(null)
-    if (
-      !formData.name?.trim() ||
-      !formData.type ||
-      !formData.host?.trim() ||
-      !formData.database?.trim()
-    ) {
+    const name = formData.name?.trim() ?? ''
+    const host = formData.host?.trim() ?? ''
+    const database = formData.database?.trim() ?? ''
+    if (!name || !formData.type || !host || !database) {
       setValidationError('Please fill in all required fields (name, host, database).')
       return
     }
 
-    const connection: DatabaseConnection = {
-      id: `conn-${Date.now()}`,
-      name: formData.name,
-      type: formData.type as DatabaseType,
-      host: formData.host,
+    const saved: DatabaseConnection = {
+      id: connection?.id ?? `conn-${Date.now()}`,
+      name,
+      type: formData.type,
+      host,
       port:
         formData.port ?? DATABASE_TYPES.find((t) => t.value === formData.type)?.defaultPort ?? 5432,
-      database: formData.database,
-      username: formData.username ?? '',
+      database,
+      username: formData.username?.trim() ?? '',
       password: formData.password ?? '',
       ssl: formData.ssl ?? false,
     }
 
-    onSave(connection)
+    onSave(saved)
   }
 
   const handleTypeChange = (type: DatabaseType) => {
@@ -77,8 +98,8 @@ export default function ConnectionModal({ onClose, onSave }: ConnectionModalProp
     <Modal
       open
       onClose={onClose}
-      title="New Connection"
-      icon={<Database className="text-emerald-600" size={24} />}
+      title={isEditing ? 'Edit connection' : 'New Connection'}
+      icon={<Database className="text-pink-500" size={24} />}
       size="md"
     >
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -188,7 +209,7 @@ export default function ConnectionModal({ onClose, onSave }: ConnectionModalProp
             Cancel
           </Button>
           <Button type="submit" variant="primary">
-            Connect
+            {isEditing ? 'Save' : 'Connect'}
           </Button>
         </div>
       </form>

@@ -71,6 +71,99 @@ function normalizeSavedQuery(o: Record<string, unknown>): SavedQuery {
   }
 }
 
+/** Queries belong to one connection. Unscoped and other-connection queries stay out of the list. */
+export function queriesForConnection(queries: SavedQuery[], connectionId: string): SavedQuery[] {
+  return queries.filter((query) => query.connectionId === connectionId)
+}
+
+/**
+ * Save a named query on one connection.
+ * An existing id is updated only when it already belongs to that connection.
+ */
+export function saveNamedQuery(
+  queries: SavedQuery[],
+  draft: {
+    name: string
+    query: string
+    connectionId: string
+    connectionName: string
+    existingId?: string | null
+    now?: number
+  },
+  limit: number
+): { queries: SavedQuery[]; savedId: string; savedName: string } {
+  const name = draft.name.trim()
+  const now = draft.now ?? Date.now()
+  const existing = draft.existingId
+    ? queries.find((item) => item.id === draft.existingId && item.connectionId === draft.connectionId)
+    : undefined
+
+  if (existing) {
+    return {
+      savedId: existing.id,
+      savedName: name,
+      queries: queries
+        .map((item) =>
+          item.id === existing.id
+            ? {
+                ...item,
+                name,
+                query: draft.query,
+                connectionId: draft.connectionId,
+                connectionName: draft.connectionName,
+              }
+            : item
+        )
+        .slice(0, limit),
+    }
+  }
+
+  const created: SavedQuery = {
+    id: `sq-${now}`,
+    name,
+    query: draft.query,
+    connectionId: draft.connectionId,
+    connectionName: draft.connectionName,
+    createdAt: now,
+  }
+  return {
+    savedId: created.id,
+    savedName: name,
+    queries: [created, ...queries].slice(0, limit),
+  }
+}
+
+/** Insert a new connection, or replace the one with the same id. Linked saved queries keep the new name. */
+export function applyConnectionSave(
+  connections: DatabaseConnection[],
+  savedQueries: SavedQuery[],
+  connection: DatabaseConnection,
+  activeConnectionId: string | null
+): {
+  connections: DatabaseConnection[]
+  savedQueries: SavedQuery[]
+  activeConnectionId: string | null
+  created: boolean
+} {
+  const created = connections.every((item) => item.id !== connection.id)
+  const nextConnections = created
+    ? [...connections, connection]
+    : connections.map((item) => (item.id === connection.id ? connection : item))
+  const linked = savedQueries.some((query) => query.connectionId === connection.id)
+  const nextQueries = linked
+    ? savedQueries.map((query) =>
+        query.connectionId === connection.id ? { ...query, connectionName: connection.name } : query
+      )
+    : savedQueries
+
+  return {
+    connections: nextConnections,
+    savedQueries: nextQueries,
+    activeConnectionId: created ? connection.id : activeConnectionId,
+    created,
+  }
+}
+
 export function saveConnections(connections: DatabaseConnection[]): void {
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(connections))

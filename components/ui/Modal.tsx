@@ -35,13 +35,13 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? 'modal-title' : undefined}
     >
       <div
-        className={`bg-white rounded-xl shadow-2xl w-full ${sizeClasses[size]} border border-[var(--border)] flex flex-col ${
+        className={`flex w-full max-h-[90vh] flex-col rounded-xl border border-[var(--border)] bg-white shadow-2xl ${sizeClasses[size]} ${
           scrollable ? 'max-h-[90vh] overflow-hidden' : ''
         }`}
         onClick={(e) => e.stopPropagation()}
