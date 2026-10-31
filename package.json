@@ -2,7 +2,7 @@
   "name": "velora",
   "version": "1.0.0",
   "description": "Velora — a modern database management tool",
-  "author": "Velora",
+  "author": "Zahra",
   "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "next dev",
@@ -55,7 +55,7 @@
     "prettier": "^3.2.0"
   },
   "build": {
-    "appId": "com.velora.app",
+    "appId": "com.zahra.velora",
     "productName": "Velora",
     "directories": {
       "output": "dist"
